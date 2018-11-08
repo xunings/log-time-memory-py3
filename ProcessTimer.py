@@ -1,5 +1,6 @@
-# Ref: https://stackoverflow.com/questions/13607391/subprocess-memory-usage-in-python/13607392
+# Copied from https://stackoverflow.com/questions/13607391/subprocess-memory-usage-in-python/13607392
 
+import time
 import psutil
 import subprocess
 
@@ -27,7 +28,8 @@ class ProcessTimer:
       pp = psutil.Process(self.p.pid)
 
       #obtain a list of the subprocess and all its descendants
-      descendants = list(pp.get_children(recursive=True))
+      #descendants = list(pp.get_children(recursive=True))
+      descendants = list(pp.children(recursive=True))
       descendants = descendants + [pp]
 
       rss_memory = 0
@@ -36,11 +38,12 @@ class ProcessTimer:
       #calculate and sum up the memory of the subprocess and all its descendants 
       for descendant in descendants:
         try:
-          mem_info = descendant.get_memory_info()
+          #mem_info = descendant.get_memory_info()
+          mem_info = descendant.memory_info()
 
           rss_memory += mem_info[0]
           vms_memory += mem_info[1]
-        except psutil.error.NoSuchProcess:
+        except psutil.NoSuchProcess:
           #sometimes a subprocess descendant will have terminated between the time
           # we obtain a list of descendants, and the time we actually poll this
           # descendant's memory usage.
@@ -48,7 +51,7 @@ class ProcessTimer:
       self.max_vms_memory = max(self.max_vms_memory,vms_memory)
       self.max_rss_memory = max(self.max_rss_memory,rss_memory)
 
-    except psutil.error.NoSuchProcess:
+    except psutil.NoSuchProcess:
       return self.check_execution_state()
 
 
@@ -74,27 +77,6 @@ class ProcessTimer:
         pp.kill()
       else:
         pp.terminate()
-    except psutil.error.NoSuchProcess:
+    #except psutil.error.NoSuchProcess:
+    except psutil.NoSuchProcess:
       pass
-You then use it like so:
-
-import time
-
-#I am executing "make target" here
-ptimer = ProcessTimer(['make','target'])
-
-try:
-  ptimer.execute()
-  #poll as often as possible; otherwise the subprocess might 
-  # "sneak" in some extra memory usage while you aren't looking
-  while ptimer.poll():
-
-    time.sleep(.5)
-finally:
-  #make sure that we don't leave the process dangling?
-  ptimer.close()
-
-print 'return code:',ptimer.p.returncode
-print 'time:',ptimer.t1 - ptimer.t0
-print 'max_vms_memory:',ptimer.max_vms_memory
-print 'max_rss_memory:',ptimer.max_rss_memory
